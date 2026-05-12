@@ -3,6 +3,9 @@
 library(dplyr)
 library(stringr)
 library(ggplot2)
+library(ggpubr)
+library(reshape2)
+library(RColorBrewer)
 
 # Read data
 tf_combined_df <- read.csv("tf_combined_deg.csv")
@@ -113,6 +116,101 @@ ggplot(top_20_df, aes(x = TF, Activity, y = Activity)) +
     plot.title = element_text(face = "bold", hjust = 0.5),
     axis.text.y = element_text(size = 13),
     legend.position = "bottom"
+  )
+
+
+
+
+# ---- USER INPUT ---- choose the stage and gene list to analyze ---------------------
+stage_to_cluster <- "HH5"  
+gene_list <- unique(readLines("HH5genes.txt"))
+#
+stage_to_cluster <- "1som"  
+gene_list <- unique(readLines("1ssgenes.txt"))
+#
+stage_to_cluster <- "4som"  
+gene_list <- unique(readLines("4ssgenes.txt"))
+#
+stage_to_cluster <- "7som"  
+gene_list <- unique(readLines("7ssgenes.txt"))
+#
+stage_to_cluster <- "HH11"  
+gene_list <- unique(readLines("HH11genes.txt"))
+
+
+
+# ---- Filter for chosen stage ----
+df_stage <- tf_combined_df %>%
+  mutate(
+    StageOnly = sub("_(.*)", "", Cluster),
+    CellType = str_extract(Cluster, "[^_]+$")) %>%
+  filter(StageOnly == stage_to_cluster, Expression > 0)
+
+#--- run below---------
+df_geneplot <- df_stage %>%
+  filter(TF %in% gene_list) %>%
+  mutate(
+    TF = factor(TF, levels = rev(gene_list))  # maintain order
+  )
+
+ggplot(df_geneplot, aes(x = TF, y = Activity)) +
+  geom_hline(yintercept = 0, color = "gray50", linewidth = 0.4) +
+  geom_segment(aes(xend = TF, y = 0, yend = Activity, color = CellType),
+               linewidth = 1.1, show.legend = FALSE) +  # no legend for lines
+  geom_point(aes(size = Expression, fill = CellType),
+             shape = 21, color = "black", alpha = 0.9, stroke = 0.3,
+             show.legend = c(fill = FALSE)) +           # drop fill legend
+  scale_fill_manual(values = celltype_colors) +
+  scale_color_manual(values = celltype_colors) +
+  scale_size_continuous(range = c(4, 8)) +
+  coord_flip() +
+  theme_minimal(base_size = 13) +
+  labs(
+    x = NULL,
+    y = "TF Activity Score",
+    size = "RNA Expression"  # only this will remain
+  ) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    axis.text.y = element_text(size = 12),
+    legend.position = "bottom"
+  )
+
+#----------------------------------------------------------------------------
+table(df_stage$CellType)
+# Define
+target <- "nne"
+neighbors <- c("ne", "nc","Vnt")
+
+# 1. TFs active in target
+active_in_target <- df_stage %>%
+  filter(CellType == target, Expression > 0, Activity > 0) %>%
+  pull(TF) %>% unique()
+
+# 2. For each TF, check if it is expressed in ALL neighbors and Activity ≤ 0 in ALL
+inactive_in_all_neighbors <- df_stage %>%
+  filter(CellType %in% neighbors, Expression > 0) %>%
+  group_by(TF) %>%
+  summarise(AllInactive = all(Activity <= 0), .groups = "drop") %>%
+  filter(AllInactive) %>%
+  pull(TF)
+
+# 3. Final intersect
+differential_tfs <- intersect(active_in_target, inactive_in_all_neighbors)
+
+top_x2 <- df_stage %>%
+  filter(TF %in% differential_tfs, CellType == target,Expression > 0) %>%
+  group_by(TF) %>%
+  summarise(AvgExpression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(AvgExpression)) %>%
+  slice_head(n = 5) %>%
+  pull(TF)
+
+
+df_geneplot <- df_stage %>%
+  filter(TF %in% top_x2) %>%
+  mutate(
+    TF = factor(TF, levels = rev(top_x2))  # maintain order
   )
 
 

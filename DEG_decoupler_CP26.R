@@ -2,7 +2,7 @@
 
 
 # decoupleR + collecTRI
-# In this script we are first doing
+# In this script we are doing:
 #            1-) DEG analysis among 21 unique idents
 #            2-) Use LogFolChange values of the DEG list to feed into decoupleR and collecTRI
 #            3-) results are not embeded into seurat as there are less genes
